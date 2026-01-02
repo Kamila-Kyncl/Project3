@@ -47,18 +47,18 @@ def main() -> None:
     parsed_html = bs(answer.text, features="html.parser")
 
     # selekce samotných A tagů
-    td_number = parsed_html.find("td", class_="cislo")
+    td_numbers = parsed_html.find_all("td", class_="cislo")
+    td_cities = parsed_html.find_all("td", class_="overflow_name")
 
-    if td_number is not None:
-        a_tag = td_number.find("a")
-        if a_tag is not None:
-            link = "https://www.volby.cz/pls/ps2017nss/" + a_tag.get("href")
-            parsed_part = bs(get(link).text, features="html.parser")
+    if td_numbers is not None:
+        for td_number, td_city in zip(td_numbers, td_cities):
+            a_tag = td_number.find("a")
+            if a_tag is not None:
+                link = "https://www.volby.cz/pls/ps2017nss/" + a_tag.get("href")
+                parsed_part = bs(get(link).text, features="html.parser")
 
-    td_city = parsed_html.find("td", class_="overflow_name")
-
-    print(td_number.get_text() + "," + td_city.get_text())
-    print(*get_row(parsed_part), sep=", ")
+                print(td_number.get_text() + "," + td_city.get_text())
+                print(*get_row(parsed_part), sep=", ")
 
 
 if __name__ == "__main__":
