@@ -1,34 +1,65 @@
 from requests import get
 from bs4 import BeautifulSoup as bs
+import csv
 
-# odeslání požadavku GET
-answer = get("https://www.volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=12&xnumnuts=7103")
+def get_row(parsed_html: bs) -> list[str]:
+    """
+    Vytahne a vrátí požadovaná data ze vstupního html
+    
+    :param parsed_html: Html pro načtení dat
+    :type parsed_html: bs BeautifulSoup
+    :return: Vrací požadovaný řádek s daty
+    :rtype: list[str]
+    """
 
-# parsování vráceného HTML souboru
-parsed_html = bs(answer.text, features="html.parser")
+    registered = parsed_html.select_one('td.cislo[headers="sa2"]')
+    envelopes = parsed_html.select_one('td.cislo[headers="sa3"]')
+    valid = parsed_html.select_one('td.cislo[headers="sa6"]')
+    results_part1 = [
+        td.get_text(strip=True)
+        for td in parsed_html.select(
+            'td.cislo[headers~="t1sa2"][headers~="t1sb3"]'
+        )
+    ]
+    results_part2 = [
+        td.get_text(strip=True)
+        for td in parsed_html.select(
+            'td.cislo[headers~="t2sa2"][headers~="t2sb3"]'
+        )
+    ]
 
-# selekce samotných A tagů
-td_number = parsed_html.find("td", class_="cislo")
+    return [
+        registered.get_text(strip=True) if registered else "",
+        envelopes.get_text(strip=True) if envelopes else "",
+        valid.get_text(strip=True) if valid else "",
+        *results_part1,
+        *results_part2,
+    ]
 
-if td_number is not None:
-    a_tag = td_number.find("a")
-    if a_tag is not None:
-        link = "https://www.volby.cz/pls/ps2017nss/" + a_tag.get("href")
-        parsed_part = bs(get(link).text, features="html.parser")
 
-td_city = parsed_html.find("td", class_="overflow_name")
-sa2 = parsed_part.select_one('td.cislo[headers="sa2"]')
-sa3 = parsed_part.select_one('td.cislo[headers="sa3"]')
-sa6 = parsed_part.select_one('td.cislo[headers="sa6"]')
+def main() -> None:
+    """Spustí webscrapping voleb 2017"""
 
-results_part1 = ",".join(
-    td.get_text(strip=True)
-    for td in parsed_part.select('td.cislo[headers~="t1sa2"][headers~="t1sb3"]')
-)
+    # odeslání požadavku GET
+    answer = get("https://www.volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=12&xnumnuts=7103")
 
-results_part2 = ",".join(
-    td.get_text(strip=True)
-    for td in parsed_part.select('td.cislo[headers~="t2sa2"][headers~="t2sb3"]')
-)
+    # parsování vráceného HTML souboru
+    parsed_html = bs(answer.text, features="html.parser")
 
-print(td_number.get_text() + "," + td_city.get_text() + "," + sa2.get_text() + "," + sa3.get_text() + "," + sa6.get_text() + "," + results_part1 + "," + results_part2 + ";")
+    # selekce samotných A tagů
+    td_number = parsed_html.find("td", class_="cislo")
+
+    if td_number is not None:
+        a_tag = td_number.find("a")
+        if a_tag is not None:
+            link = "https://www.volby.cz/pls/ps2017nss/" + a_tag.get("href")
+            parsed_part = bs(get(link).text, features="html.parser")
+
+    td_city = parsed_html.find("td", class_="overflow_name")
+
+    print(td_number.get_text() + "," + td_city.get_text())
+    print(*get_row(parsed_part), sep=", ")
+
+
+if __name__ == "__main__":
+    main()
