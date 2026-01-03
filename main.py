@@ -1,8 +1,66 @@
 from requests import get
 from bs4 import BeautifulSoup as bs
 import csv
+import argparse
+import re
+import os
 
 BASE_LINK = "https://www.volby.cz/pls/ps2017nss/"
+
+def parse_args() -> argparse.Namespace:
+    """
+    Zpracování vstupních parametrů
+    
+    :return: Vstupní paramentry
+    :rtype: Namespace
+    """
+    parser = argparse.ArgumentParser(
+        description="Webscraping voleb 2017"
+    )
+
+    parser.add_argument(
+        "url",
+        help="URL okresu, ze kterého se budou scrapovat data"
+    )
+
+    parser.add_argument(
+        "output",
+        help="Název výstupního souboru BEZ přípony"
+    )
+
+    return parser.parse_args()
+
+
+def validate_url(url: str) -> None:
+    """
+    Validace URL
+    
+    :param url: URL
+    :type url: str
+    """
+    if not url.startswith(BASE_LINK):
+        raise ValueError("URL musí začínat " + BASE_LINK)
+    
+
+def validate_output_name(name: str) -> str:
+    """
+    Validate názvu souboru
+    
+    :param name: Vstupní název souboru
+    :type name: str
+    :return: Název souboru s příponou .csv
+    :rtype: str
+    """
+    if "." in name:
+        raise ValueError("Název souboru nesmí obsahovat příponu")
+
+    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+        raise ValueError(
+            "Název souboru může obsahovat jen písmena, čísla, _ a -"
+        )
+
+    return name + ".csv"
+
 
 def get_row(parsed_html: bs) -> list[str]:
     """
@@ -42,19 +100,28 @@ def get_row(parsed_html: bs) -> list[str]:
 def main() -> None:
     """Spustí webscrapping voleb 2017"""
 
+    args = parse_args()
+
+    try:
+        validate_url(args.url)
+        output_file = validate_output_name(args.output)
+    except ValueError as error:
+        print(error)
+        return
+
     # odeslání požadavku GET
-    answer = get("https://www.volby.cz/pls/ps2017nss/ps32?xjazyk=CZ&xkraj=12" \
-    "&xnumnuts=7103")
+    main_html = get(args.url)
 
     # parsování vráceného HTML souboru
-    parsed_html = bs(answer.text, features="html.parser")
+    parsed_html = bs(main_html.text, features="html.parser")
 
-    # selekce samotných A tagů
+    # selekce čísel okrsků a názvů měst
     td_numbers = parsed_html.find_all("td", class_="cislo")
     td_cities = parsed_html.find_all("td", class_="overflow_name")
 
     if td_numbers and td_cities is not None:
-        with open("vysledky.csv", "w", newline="", encoding="utf-8") as f:
+        print("STAHUJI DATA Z VYBRANEHO URL: " + args.url)
+        with open(output_file, "w", newline="", encoding="utf-8") as f:
             part_link = BASE_LINK + td_numbers[0].find("a").get("href")
             parsed_part = bs(get(part_link).text, features="html.parser")
             political_list = parsed_part.find_all("td", class_="overflow_name")
@@ -71,6 +138,15 @@ def main() -> None:
                     link = BASE_LINK + a_tag.get("href")
                     parsed_part = bs(get(link).text, features="html.parser")
                     writer.writerow([td_number.get_text(), td_city.get_text(), *get_row(parsed_part)])
+                else:
+                    print("Nesprávné url")
+                    return
+    else:
+        print("Nesprávné url")
+        return
+    
+    print("UKLADAM DO SOUBORU: " + output_file)
+    print("UKONCUJI: " + os.path.splitext(os.path.basename(__file__))[0])
 
 
 if __name__ == "__main__":
