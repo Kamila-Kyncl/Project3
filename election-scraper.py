@@ -1,16 +1,18 @@
-from requests import get
-from bs4 import BeautifulSoup as bs
-import csv
 import argparse
-import re
+import csv
 import os
+import re
+
+from bs4 import BeautifulSoup
+from requests import get
 
 BASE_LINK = "https://www.volby.cz/pls/ps2017nss/"
+
 
 def parse_args() -> argparse.Namespace:
     """
     Zpracování vstupních parametrů
-    
+
     :return: Vstupní paramentry
     :rtype: Namespace
     """
@@ -34,18 +36,18 @@ def parse_args() -> argparse.Namespace:
 def validate_url(url: str) -> None:
     """
     Validace URL
-    
+
     :param url: URL
     :type url: str
     """
     if not url.startswith(BASE_LINK):
         raise ValueError("URL musí začínat " + BASE_LINK)
-    
+
 
 def validate_output_name(name: str) -> str:
     """
     Validate názvu souboru
-    
+
     :param name: Vstupní název souboru
     :type name: str
     :return: Název souboru s příponou .csv
@@ -62,12 +64,12 @@ def validate_output_name(name: str) -> str:
     return name + ".csv"
 
 
-def get_row(parsed_html: bs) -> list[str]:
+def get_row(parsed_html: BeautifulSoup) -> list[str]:
     """
     Vytahne a vrátí požadovaná data ze vstupního html
-    
+
     :param parsed_html: Html pro načtení dat
-    :type parsed_html: bs BeautifulSoup
+    :type parsed_html: BeautifulSoup
     :return: Vrací požadovaný řádek s daty
     :rtype: list[str]
     """
@@ -75,6 +77,7 @@ def get_row(parsed_html: bs) -> list[str]:
     registered = parsed_html.select_one('td.cislo[headers="sa2"]')
     envelopes = parsed_html.select_one('td.cislo[headers="sa3"]')
     valid = parsed_html.select_one('td.cislo[headers="sa6"]')
+
     results_part1 = [
         td.get_text(strip=True)
         for td in parsed_html.select(
@@ -113,38 +116,53 @@ def main() -> None:
     main_html = get(args.url)
 
     # parsování vráceného HTML souboru
-    parsed_html = bs(main_html.text, features="html.parser")
+    parsed_html = BeautifulSoup(main_html.text, features="html.parser")
 
     # selekce čísel okrsků a názvů měst
     td_numbers = parsed_html.find_all("td", class_="cislo")
     td_cities = parsed_html.find_all("td", class_="overflow_name")
 
-    if td_numbers and td_cities is not None:
-        print("STAHUJI DATA Z VYBRANEHO URL: " + args.url)
-        with open(output_file, "w", newline="", encoding="utf-8") as f:
-            part_link = BASE_LINK + td_numbers[0].find("a").get("href")
-            parsed_part = bs(get(part_link).text, features="html.parser")
-            political_list = parsed_part.find_all("td", class_="overflow_name")
-            political_list = [td.get_text() for td in parsed_part.find_all("" \
-            "td", class_="overflow_name")]
-            writer = csv.writer(f)
-            writer.writerow(["code", "location", "registered", "envelopes", 
-                             "valid", *political_list])
-            for td_number, td_city in zip(td_numbers, td_cities):
-                a_tag = td_number.find("a")
-                if a_tag is not None:
-                    print("STAHUJI A ZAPISUJI DATA PRO OKRSEK" + " "
-                    "" + td_city.getText())
-                    link = BASE_LINK + a_tag.get("href")
-                    parsed_part = bs(get(link).text, features="html.parser")
-                    writer.writerow([td_number.get_text(), td_city.get_text(), *get_row(parsed_part)])
-                else:
-                    print("Nesprávné url")
-                    return
-    else:
+    if not td_numbers or not td_cities:
         print("Nesprávné url")
         return
-    
+
+    print("STAHUJI DATA Z VYBRANEHO URL: " + args.url)
+    with open(output_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        part_link = BASE_LINK + td_numbers[0].find("a").get("href")
+        parsed_part = BeautifulSoup(
+            get(part_link).text, features="html.parser")
+
+        political_list = [
+            td.get_text()
+            for td in parsed_part.find_all("td", class_="overflow_name")
+        ]
+
+        writer.writerow(["code",
+                         "location",
+                         "registered",
+                         "envelopes",
+                         "valid",
+                         *political_list
+                         ])
+
+        for td_number, td_city in zip(td_numbers, td_cities):
+            a_tag = td_number.find("a")
+            if a_tag:
+                link = BASE_LINK + a_tag.get("href")
+                parsed_part = BeautifulSoup(
+                    get(link).text, features="html.parser")
+
+                writer.writerow(
+                    [td_number.get_text(),
+                     td_city.get_text(),
+                     *get_row(parsed_part)
+                    ])
+            else:
+                print("Nesprávné url")
+                return
+
     print("UKLADAM DO SOUBORU: " + output_file)
     print("UKONCUJI: " + os.path.splitext(os.path.basename(__file__))[0])
 
